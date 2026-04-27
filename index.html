@@ -982,122 +982,298 @@
             { id: 'wizard', name: '大魔法师', icon: '🧙', requirement: 2000, description: '完成2000题' }
         ];
 
-        // ==================== 题库 ====================
+        // ==================== 工具函数：Fisher-Yates 洗牌 ====================
+        function shuffleArray(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // 将题目的选项随机打乱，并返回新的 {a, c}（正确答案索引已更新）
+        function shuffleAnswers(answers, correctIndex) {
+            const correctAnswer = answers[correctIndex];
+            const indices = answers.map((_, i) => i);
+            const shuffled = shuffleArray(indices);
+            const newAnswers = shuffled.map(i => answers[i]);
+            const newCorrectIndex = newAnswers.indexOf(correctAnswer);
+            return { a: newAnswers, c: newCorrectIndex };
+        }
+
+        // ==================== 动态数学题生成器（小学一年级下学期校准版）====================
+        function generateMathQuestion(difficulty) {
+            let q, correct, wrongs;
+
+            // 辅助：生成差异明显的干扰项（让孩子无法靠猜相近数）
+            function makeWrongs(ans, count, spread) {
+                const w = new Set();
+                const offsets = [-spread*2, -spread, spread, spread*2, -1, 1, -3, 3];
+                for (const off of offsets) {
+                    const v = ans + off;
+                    if (v > 0 && v !== ans) w.add(v);
+                    if (w.size >= count) break;
+                }
+                // 补足
+                let i = 1;
+                while (w.size < count) { const v = ans + i * spread; if (v > 0 && v !== ans && !w.has(v)) w.add(v); i++; }
+                return [...w].slice(0, count);
+            }
+
+            if (difficulty === 1) {
+                // ★ 难度1：20以内进位加法 + 退位减法（一年级下核心考点）
+                const type = Math.random();
+                if (type < 0.45) {
+                    // 进位加法：两数之和在10-20之间，且至少一个加数>=5
+                    const a = Math.floor(Math.random() * 6) + 5;  // 5-10
+                    const b = Math.floor(Math.random() * 6) + 5;  // 5-10
+                    correct = a + b;
+                    q = `${a} + ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, 1);
+                } else if (type < 0.8) {
+                    // 退位减法：被减数11-20，需借位
+                    const a = Math.floor(Math.random() * 10) + 11; // 11-20
+                    const b = Math.floor(Math.random() * 9) + 2;   // 2-10
+                    correct = a - b;
+                    q = `${a} - ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, 1);
+                } else {
+                    // 填空题：□ + 7 = 15（逆运算）
+                    const sum = Math.floor(Math.random() * 10) + 11; // 11-20
+                    const b = Math.floor(Math.random() * 9) + 2;
+                    if (b >= sum) { correct = sum - 3; q = `${sum - 3} + 3 = ?`; }
+                    else { correct = sum - b; q = `□ + ${b} = ${sum}，□是几？`; }
+                    wrongs = makeWrongs(correct, 3, 1);
+                }
+
+            } else if (difficulty === 2) {
+                // ★ 难度2：100以内加减 + 乘法口诀（2-6的乘法表）
+                const type = Math.random();
+                if (type < 0.4) {
+                    // 100以内不退位加法
+                    const a = Math.floor(Math.random() * 40) + 20; // 20-59
+                    const b = Math.floor(Math.random() * 30) + 10; // 10-39
+                    correct = a + b;
+                    q = `${a} + ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, 2);
+                } else if (type < 0.7) {
+                    // 100以内减法
+                    const a = Math.floor(Math.random() * 50) + 40; // 40-89
+                    const b = Math.floor(Math.random() * 30) + 10; // 10-39
+                    correct = a - b;
+                    q = `${a} - ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, 2);
+                } else {
+                    // 乘法口诀（2-6段）
+                    const a = Math.floor(Math.random() * 5) + 2;  // 2-6
+                    const b = Math.floor(Math.random() * 9) + 1;  // 1-9
+                    correct = a * b;
+                    q = `${a} × ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, a);
+                }
+
+            } else {
+                // ★ 难度3：混合运算 + 乘法口诀（7-9段）+ 文字应用题
+                const type = Math.random();
+                if (type < 0.3) {
+                    // 两步混合运算（不带括号）
+                    const a = Math.floor(Math.random() * 20) + 10;
+                    const b = Math.floor(Math.random() * 15) + 5;
+                    const c2 = Math.floor(Math.random() * 10) + 3;
+                    const subType = Math.random() < 0.5;
+                    if (subType) { correct = a + b - c2; q = `${a} + ${b} - ${c2} = ?`; }
+                    else { correct = a - b + c2; if (correct <= 0) { correct = a + c2 - b + 5; q = `${a+5} - ${b} + ${c2} = ?`; } else { q = `${a} - ${b} + ${c2} = ?`; } }
+                    wrongs = makeWrongs(correct, 3, 2);
+                } else if (type < 0.6) {
+                    // 乘法口诀7-9段
+                    const a = Math.floor(Math.random() * 3) + 7;  // 7-9
+                    const b = Math.floor(Math.random() * 9) + 1;  // 1-9
+                    correct = a * b;
+                    q = `${a} × ${b} = ?`;
+                    wrongs = makeWrongs(correct, 3, a);
+                } else if (type < 0.8) {
+                    // 文字应用题：加减
+                    const appTypes = [
+                        () => { const n = Math.floor(Math.random()*20)+15; const m = Math.floor(Math.random()*10)+5; return { q: `树上有${n}只鸟，飞走了${m}只，还剩几只？`, a: n-m }; },
+                        () => { const n = Math.floor(Math.random()*20)+10; const m = Math.floor(Math.random()*10)+5; return { q: `小明有${n}本书，小华有${m}本，一共有几本？`, a: n+m }; },
+                        () => { const n = Math.floor(Math.random()*15)+10; const m = Math.floor(Math.random()*8)+3; return { q: `篮子里有${n}个苹果，吃了${m}个，还剩几个？`, a: n-m }; },
+                        () => { const n = Math.floor(Math.random()*20)+15; const m = Math.floor(Math.random()*10)+5; return { q: `操场上有${n}个同学，走了${m}个，还有几个？`, a: n-m }; },
+                    ];
+                    const picked = appTypes[Math.floor(Math.random()*appTypes.length)]();
+                    q = picked.q;
+                    correct = picked.a;
+                    wrongs = makeWrongs(correct, 3, 2);
+                } else {
+                    // 文字应用题：乘法
+                    const mulApps = [
+                        () => { const r = Math.floor(Math.random()*4)+2; const c2 = Math.floor(Math.random()*4)+3; return { q: `每排有${c2}个座位，有${r}排，一共有几个座位？`, a: r*c2 }; },
+                        () => { const n = Math.floor(Math.random()*4)+3; const m = Math.floor(Math.random()*4)+2; return { q: `${n}个小朋友，每人拿${m}支铅笔，共需几支？`, a: n*m }; },
+                    ];
+                    const picked = mulApps[Math.floor(Math.random()*mulApps.length)]();
+                    q = picked.q;
+                    correct = picked.a;
+                    wrongs = makeWrongs(correct, 3, picked.a > 20 ? 3 : 2);
+                }
+            }
+
+            // 去重并补足4个选项
+            const uniqueWrongs = [...new Set(wrongs.filter(v => v !== correct && v > 0))].slice(0, 3);
+            let i = 1;
+            while (uniqueWrongs.length < 3) {
+                const candidate = correct + i;
+                if (!uniqueWrongs.includes(candidate) && candidate !== correct && candidate > 0) uniqueWrongs.push(candidate);
+                i++;
+            }
+            const allAnswers = [correct, ...uniqueWrongs];
+            const { a, c } = shuffleAnswers(allAnswers, 0);
+            return { q, a, c };
+        }
+
+        // ==================== 题库（小学一年级下学期校准版）====================
+        // 注意：所有静态题目中 c 只是原始正确答案的索引，loadQuestion 时会重新洗牌
         const questionBanks = {
-            math: {
-                1: [
-                    {q: '🍎 + 🍎 = ?', a: [2, 3, 4, 5], c: 0},
-                    {q: '🍊 + 🍊 = ?', a: [4, 5, 6, 3], c: 0},
-                    {q: '🍌 + 🍌 = ?', a: [4, 3, 5, 6], c: 0},
-                    {q: '5 - 2 = ?', a: [3, 4, 2, 1], c: 0},
-                    {q: '6 - 3 = ?', a: [3, 4, 2, 5], c: 0},
-                    {q: '4 + 3 = ?', a: [7, 6, 8, 5], c: 0},
-                    {q: '8 - 5 = ?', a: [3, 4, 5, 2], c: 0},
-                    {q: '2 + 7 = ?', a: [9, 8, 10, 7], c: 0},
-                    {q: '9 - 4 = ?', a: [5, 6, 4, 3], c: 0},
-                    {q: '3 + 5 = ?', a: [8, 7, 9, 6], c: 0},
-                    {q: '7 - 2 = ?', a: [5, 6, 4, 3], c: 0},
-                    {q: '1 + 8 = ?', a: [9, 8, 10, 7], c: 0},
-                ],
-                2: [
-                    {q: '12 + 5 = ?', a: [17, 16, 18, 15], c: 0},
-                    {q: '15 - 7 = ?', a: [8, 7, 9, 6], c: 1},
-                    {q: '9 + 8 = ?', a: [17, 16, 18, 15], c: 0},
-                    {q: '20 - 9 = ?', a: [11, 10, 12, 9], c: 0},
-                    {q: '14 + 6 = ?', a: [20, 19, 21, 18], c: 0},
-                    {q: '16 - 8 = ?', a: [8, 7, 9, 6], c: 0},
-                    {q: '11 + 7 = ?', a: [18, 17, 19, 16], c: 0},
-                    {q: '19 - 5 = ?', a: [14, 13, 15, 12], c: 0},
-                    {q: '8 + 9 = ?', a: [17, 16, 18, 15], c: 0},
-                    {q: '13 - 6 = ?', a: [7, 6, 8, 5], c: 0},
-                ],
-                3: [
-                    {q: '25 + 17 = ?', a: [42, 41, 43, 40], c: 0},
-                    {q: '38 - 19 = ?', a: [19, 18, 20, 17], c: 0},
-                    {q: '3 × 4 = ?', a: [12, 10, 14, 8], c: 0},
-                    {q: '5 × 6 = ?', a: [30, 28, 32, 25], c: 0},
-                    {q: '45 + 28 = ?', a: [73, 72, 74, 71], c: 0},
-                    {q: '6 × 7 = ?', a: [42, 40, 44, 38], c: 0},
-                    {q: '50 - 23 = ?', a: [27, 26, 28, 25], c: 0},
-                    {q: '4 × 8 = ?', a: [32, 30, 34, 28], c: 0},
-                    {q: '36 + 15 = ?', a: [51, 50, 52, 49], c: 0},
-                    {q: '7 × 8 = ?', a: [56, 54, 58, 52], c: 0},
-                ]
-            },
+            math: null, // 数学题动态生成，不使用静态库
             chinese: {
+                // ★ 难度1：字词认读 + 简单组词（一年级下上册核心字）
                 1: [
-                    {q: '🍎 这个是什么？', a: ['苹果', '香蕉', '橙子', '葡萄'], c: 0},
-                    {q: '🌞 这个字怎么读？', a: ['日', '月', '水', '火'], c: 0},
-                    {q: '👋 这个是什么？', a: ['手', '脚', '头', '眼'], c: 0},
-                    {q: '🌙 夜晚天上有什么？', a: ['月亮', '太阳', '星星', '云'], c: 0},
-                    {q: '🐕 狗狗怎么叫？', a: ['汪汪', '喵喵', '咕咕', '呱呱'], c: 0},
-                    {q: '🌸 春天开什么花？', a: ['花朵', '雪花', '冰花', '雨花'], c: 0},
-                    {q: '🚗 街上跑的是什么？', a: ['汽车', '飞机', '轮船', '火车'], c: 0},
-                    {q: '📚 我们用什么读书？', a: ['书本', '桌子', '椅子', '窗户'], c: 0},
-                    {q: '💧 云里下的是什么？', a: ['雨', '雪', '风', '雷'], c: 0},
-                    {q: '🏠 我们住在哪里？', a: ['房子', '学校', '医院', '商店'], c: 0},
+                    {q: '"日"字加一横，变成什么字？', a: ['目', '由', '旦', '白'], c: 0},
+                    {q: '"木"字中间加一竖，变成什么字？', a: ['串', '中', '本', '末'], c: 2},
+                    {q: '"口"字下面加一横，变成什么字？', a: ['日', '曰', '土', '士'], c: 2},
+                    {q: '"人"字加一横在中间，变成什么字？', a: ['大', '天', '夫', '太'], c: 0},
+                    {q: '"水"可以组成哪个词？', a: ['水果', '木头', '火车', '土地'], c: 0},
+                    {q: '"花"可以组成哪个词？', a: ['花朵', '草地', '树木', '石头'], c: 0},
+                    {q: '"鸟"可以组成哪个词？', a: ['小鸟', '大鱼', '花草', '白云'], c: 0},
+                    {q: '"山"可以组成哪个词？', a: ['山坡', '大海', '河流', '平原'], c: 0},
+                    {q: '"手"可以组成哪个词？', a: ['手心', '脚步', '眼睛', '耳朵'], c: 0},
+                    {q: '"天"可以组成哪个词？', a: ['天空', '地面', '水里', '山上'], c: 0},
+                    {q: '"目"字旁的字，通常和什么有关？', a: ['眼睛', '嘴巴', '耳朵', '鼻子'], c: 0},
+                    {q: '"氵"（三点水）旁的字，通常和什么有关？', a: ['水', '火', '木', '土'], c: 0},
+                    {q: '下面哪个字读"míng"（明）？', a: ['明', '名', '鸣', '命'], c: 0},
+                    {q: '"春"字属于哪个季节？', a: ['春天', '夏天', '秋天', '冬天'], c: 0},
+                    {q: '"雪"字属于哪个季节的天气？', a: ['冬天', '夏天', '春天', '秋天'], c: 0},
+                    {q: '"草"字的部首是什么？', a: ['艹（草字头）', '木', '土', '氵'], c: 0},
+                    {q: '"林"字是由几个"木"组成的？', a: ['两个', '三个', '一个', '四个'], c: 0},
+                    {q: '"森"字是由几个"木"组成的？', a: ['三个', '两个', '四个', '一个'], c: 0},
+                    {q: '"晴"字的偏旁是什么？', a: ['日字旁', '月字旁', '三点水', '草字头'], c: 0},
+                    {q: '"竹"字属于哪类植物？', a: ['竹子', '花朵', '树木', '小草'], c: 0},
                 ],
+                // ★ 难度2：词语辨析 + 句子填空 + 字形比较（一年级下重点）
                 2: [
-                    {q: '"上"字加一笔是什么？', a: ['止', '土', '十', '山'], c: 0},
-                    {q: '"大"字加一点是什么？', a: ['太', '犬', '天', '夫'], c: 0},
-                    {q: '什么动物会飞？', a: ['鸟', '鱼', '狗', '猫'], c: 0},
-                    {q: '什么水果是黄色的？', a: ['香蕉', '苹果', '葡萄', '西瓜'], c: 0},
-                    {q: '一年有几个季节？', a: ['四个', '三个', '五个', '两个'], c: 0},
-                    {q: '哪个是"天"的反义词？', a: ['地', '人', '大', '小'], c: 0},
-                    {q: '哪个是"上"的反义词？', a: ['下', '左', '前', '高'], c: 0},
-                    {q: '什么季节很热？', a: ['夏天', '冬天', '秋天', '春天'], c: 0},
-                    {q: '什么季节会下雪？', a: ['冬天', '夏天', '春天', '秋天'], c: 0},
-                    {q: '哪个是"多"的反义词？', a: ['少', '大', '高', '长'], c: 0},
+                    {q: '"春天"里，哪个词语最合适填入：小草（  ）了', a: ['发芽', '落叶', '结冰', '枯萎'], c: 0},
+                    {q: '"下雪"是哪个季节的现象？', a: ['冬天', '夏天', '春天', '秋天'], c: 0},
+                    {q: '下面哪组是反义词？', a: ['大—小', '大—高', '大—多', '大—长'], c: 0},
+                    {q: '下面哪组是近义词（意思相近）？', a: ['高兴—快乐', '高兴—难过', '高兴—害怕', '高兴—生气'], c: 0},
+                    {q: '"快乐"的反义词是？', a: ['难过', '高兴', '兴奋', '满意'], c: 0},
+                    {q: '"干净"的反义词是？', a: ['脏', '整齐', '漂亮', '美丽'], c: 0},
+                    {q: '"出发"的反义词是？', a: ['到达', '离开', '前进', '停止'], c: 0},
+                    {q: '"认真"的近义词是？', a: ['仔细', '粗心', '随便', '马虎'], c: 0},
+                    {q: '"美丽"的近义词是？', a: ['漂亮', '丑陋', '普通', '平常'], c: 0},
+                    {q: '填空：妈妈（  ）我写作业', a: ['帮助', '妨碍', '拒绝', '阻止'], c: 0},
+                    {q: '"太阳"和哪个词意思最相关？', a: ['光明', '黑暗', '阴冷', '下雨'], c: 0},
+                    {q: '下面哪个词可以形容天气好？', a: ['晴朗', '阴暗', '下雨', '刮风'], c: 0},
+                    {q: '"水"的量词是？', a: ['一杯水', '一棵水', '一本水', '一条水'], c: 0},
+                    {q: '"书"的量词是？', a: ['一本书', '一条书', '一片书', '一朵书'], c: 0},
+                    {q: '"鱼"的量词是？', a: ['一条鱼', '一只鱼', '一棵鱼', '一颗鱼'], c: 0},
+                    {q: '"花"的量词是？', a: ['一朵花', '一条花', '一本花', '一张花'], c: 0},
+                    {q: '选出正确的词语填入：小猫（  ）地走过来', a: ['轻轻', '大大', '快快', '响响'], c: 0},
+                    {q: '"他把书放（  ）书包里"，括号里填什么？', a: ['进', '出', '上', '过'], c: 0},
+                    {q: '下面哪句话是正确的？', a: ['小明爱看书', '书爱看小明', '爱书小明看', '看爱书小明'], c: 0},
+                    {q: '"同学们（  ）地做操"，括号里填什么？', a: ['整齐', '乱糟糟', '吵闹', '懒洋洋'], c: 0},
                 ],
+                // ★ 难度3：古诗词 + 阅读理解 + 语法判断（一年级下拓展）
                 3: [
                     {q: '"床前明月光"的下一句是？', a: ['疑是地上霜', '举头望明月', '低头思故乡', '春眠不觉晓'], c: 0},
-                    {q: '"春眠不觉晓"出自哪首诗？', a: ['春晓', '静夜思', '咏鹅', '悯农'], c: 0},
-                    {q: '哪个是"快"的反义词？', a: ['慢', '高', '大', '长'], c: 0},
-                    {q: '哪个是"长"的反义词？', a: ['短', '高', '远', '粗'], c: 0},
-                    {q: '"鹅鹅鹅，曲项向天歌"是谁写的？', a: ['骆宾王', '李白', '杜甫', '王维'], c: 0},
-                    {q: '一年有几个月？', a: ['十二', '十', '十一', '十三'], c: 0},
-                    {q: '哪个是"黑"的反义词？', a: ['白', '红', '蓝', '绿'], c: 0},
-                    {q: '一个星期有几天？', a: ['七天', '六天', '八天', '五天'], c: 0},
-                    {q: '哪个季节会开花？', a: ['春天', '冬天', '夏天', '秋天'], c: 0},
-                    {q: '哪个是"来"的反义词？', a: ['去', '来', '走', '跑'], c: 0},
+                    {q: '"疑是地上霜"中"疑"的意思是？', a: ['好像', '怀疑', '害怕', '知道'], c: 0},
+                    {q: '"春眠不觉晓，处处闻啼鸟"下一句是？', a: ['夜来风雨声', '举头望明月', '汗滴禾下土', '低头思故乡'], c: 0},
+                    {q: '《春晓》是谁写的？', a: ['孟浩然', '李白', '杜甫', '王维'], c: 0},
+                    {q: '"鹅鹅鹅，曲项向天歌"是谁写的？', a: ['骆宾王', '李白', '杜甫', '白居易'], c: 0},
+                    {q: '"锄禾日当午，汗滴禾下土"下一句是？', a: ['谁知盘中餐', '床前明月光', '春眠不觉晓', '鹅鹅鹅'], c: 0},
+                    {q: '《悯农》的作者是？', a: ['李绅', '李白', '李清照', '杜甫'], c: 0},
+                    {q: '"白日依山尽，黄河入海流"是哪首诗？', a: ['登鹳雀楼', '静夜思', '春晓', '悯农'], c: 0},
+                    {q: '"欲穷千里目"下一句是？', a: ['更上一层楼', '黄河入海流', '白日依山尽', '疑是地上霜'], c: 0},
+                    {q: '"小时不识月，呼作白玉盘"是谁写的？', a: ['李白', '杜甫', '孟浩然', '王维'], c: 0},
+                    {q: '下面哪个句子用了比喻？', a: ['月亮像玉盘一样', '月亮升起来了', '今晚月亮很圆', '我看到月亮'], c: 0},
+                    {q: '"一去二三里，烟村四五家"数了多少的"里"？', a: ['两三里', '一里', '五里', '十里'], c: 0},
+                    {q: '"春回大地"的"春"是什么季节？', a: ['春天', '夏天', '秋天', '冬天'], c: 0},
+                    {q: '下面哪个词语形容春天最合适？', a: ['万紫千红', '白雪皑皑', '烈日炎炎', '金风送爽'], c: 0},
+                    {q: '下面哪个词语形容冬天最合适？', a: ['银装素裹', '春暖花开', '骄阳似火', '硕果累累'], c: 0},
+                    {q: '"粒粒皆辛苦"中"辛苦"的意思是？', a: ['辛劳不容易', '非常高兴', '很甜', '很美丽'], c: 0},
+                    {q: '"低头思故乡"中"故乡"是指？', a: ['家乡', '学校', '公园', '城市'], c: 0},
+                    {q: '下面哪个词是形容词？', a: ['美丽', '跑步', '苹果', '我们'], c: 0},
+                    {q: '"她跑得很（  ）"，括号填什么最合适？', a: ['快', '高', '大', '长'], c: 0},
+                    {q: '下面哪句话用了拟人的手法？', a: ['小草悄悄探出了头', '小草很绿', '草地很宽', '草地上有花'], c: 0},
                 ]
             },
             english: {
+                // ★ 难度1：26字母 + 数字1-20 + 基础单词（一年级下英语入门）
                 1: [
-                    {q: '🔤 What letter is this? A', a: ['A', 'B', 'C', 'D'], c: 0},
-                    {q: '🔤 What letter is this? B', a: ['B', 'A', 'C', 'D'], c: 0},
-                    {q: '🍎 What fruit is this?', a: ['Apple', 'Orange', 'Banana', 'Grape'], c: 0},
-                    {q: '🐱 What animal is this?', a: ['Cat', 'Dog', 'Bird', 'Fish'], c: 0},
-                    {q: '🔢 How many? 1', a: ['One', 'Two', 'Three', 'Four'], c: 0},
-                    {q: '🔢 How many? 2', a: ['Two', 'One', 'Three', 'Four'], c: 0},
-                    {q: '🌈 What color is red?', a: ['红色', '蓝色', '绿色', '黄色'], c: 0},
-                    {q: '🔢 How many? 3', a: ['Three', 'Two', 'One', 'Four'], c: 0},
-                    {q: '🐶 What animal is this?', a: ['Dog', 'Cat', 'Fish', 'Bird'], c: 0},
-                    {q: '🔤 What letter is this? C', a: ['C', 'A', 'B', 'D'], c: 0},
+                    {q: 'The letter after "D" is?', a: ['E', 'F', 'C', 'G'], c: 0},
+                    {q: 'The letter after "M" is?', a: ['N', 'O', 'L', 'P'], c: 0},
+                    {q: 'The letter before "Z" is?', a: ['Y', 'X', 'W', 'V'], c: 0},
+                    {q: 'How many letters are in the alphabet?', a: ['26', '24', '28', '25'], c: 0},
+                    {q: '"11" in English is?', a: ['Eleven', 'Ten', 'Twelve', 'Twenty'], c: 0},
+                    {q: '"15" in English is?', a: ['Fifteen', 'Fourteen', 'Sixteen', 'Fifty'], c: 0},
+                    {q: '"20" in English is?', a: ['Twenty', 'Twelve', 'Thirteen', 'Thirty'], c: 0},
+                    {q: '🍎 "苹果" in English?', a: ['Apple', 'Orange', 'Banana', 'Grape'], c: 0},
+                    {q: '🐱 "猫" in English?', a: ['Cat', 'Dog', 'Pig', 'Cow'], c: 0},
+                    {q: '🌞 "太阳" in English?', a: ['Sun', 'Moon', 'Star', 'Sky'], c: 0},
+                    {q: '🌙 "月亮" in English?', a: ['Moon', 'Sun', 'Star', 'Cloud'], c: 0},
+                    {q: '🌳 "树" in English?', a: ['Tree', 'Flower', 'Grass', 'Leaf'], c: 0},
+                    {q: '🌸 "花" in English?', a: ['Flower', 'Tree', 'Grass', 'Bush'], c: 0},
+                    {q: '📚 "书" in English?', a: ['Book', 'Pen', 'Bag', 'Desk'], c: 0},
+                    {q: '✏️ "铅笔" in English?', a: ['Pencil', 'Pen', 'Ruler', 'Eraser'], c: 0},
+                    {q: '🏫 "学校" in English?', a: ['School', 'Home', 'Park', 'Shop'], c: 0},
+                    {q: 'What color is the sky? (天空是什么颜色?)', a: ['Blue', 'Red', 'Green', 'Yellow'], c: 0},
+                    {q: 'What color is grass? (草地是什么颜色?)', a: ['Green', 'Blue', 'Red', 'White'], c: 0},
+                    {q: 'How many days in a week? (一周有几天?)', a: ['Seven', 'Five', 'Six', 'Eight'], c: 0},
+                    {q: 'How many months in a year? (一年有几个月?)', a: ['Twelve', 'Ten', 'Eleven', 'Nine'], c: 0},
                 ],
+                // ★ 难度2：词汇拓展 + 简单句型 + 日常对话（一年级下英语基础）
                 2: [
-                    {q: '🐘 What animal is this?', a: ['Elephant', 'Tiger', 'Lion', 'Bear'], c: 0},
-                    {q: '🍌 What fruit is this?', a: ['Banana', 'Apple', 'Orange', 'Grape'], c: 0},
-                    {q: '🔢 Four in English?', a: ['Four', 'Five', 'Three', 'Six'], c: 0},
-                    {q: '👨 "爸爸" in English?', a: ['Daddy', 'Mommy', 'Sister', 'Brother'], c: 0},
-                    {q: '🔢 Seven in English?', a: ['Seven', 'Six', 'Eight', 'Five'], c: 0},
-                    {q: '🌊 What is this? Water', a: ['Water', 'Milk', 'Juice', 'Tea'], c: 0},
-                    {q: '🐟 What animal swims?', a: ['Fish', 'Bird', 'Cat', 'Dog'], c: 0},
-                    {q: '🔢 Nine in English?', a: ['Nine', 'Eight', 'Ten', 'Seven'], c: 0},
-                    {q: '👩 "妈妈" in English?', a: ['Mommy', 'Daddy', 'Baby', 'Grandma'], c: 0},
-                    {q: '🍊 What fruit is orange?', a: ['Orange', 'Apple', 'Banana', 'Grape'], c: 0},
+                    {q: '"I am happy." 这句话的意思是？', a: ['我很高兴', '我很难过', '我很累', '我很饿'], c: 0},
+                    {q: '"She is a teacher." 她是做什么的？', a: ['老师', '医生', '学生', '护士'], c: 0},
+                    {q: '"Is this a cat?" 正确的回答是？', a: ['Yes, it is.', 'Yes, I am.', 'No, she is not.', 'Yes, he is.'], c: 0},
+                    {q: '🌧️ "下雨" in English?', a: ['Rain', 'Snow', 'Wind', 'Cloud'], c: 0},
+                    {q: '❄️ "下雪" in English?', a: ['Snow', 'Rain', 'Ice', 'Wind'], c: 0},
+                    {q: '☀️ "晴天" in English?', a: ['Sunny', 'Cloudy', 'Rainy', 'Windy'], c: 0},
+                    {q: '"Spring" 是什么季节？', a: ['春天', '夏天', '秋天', '冬天'], c: 0},
+                    {q: '"Winter" 是什么季节？', a: ['冬天', '夏天', '春天', '秋天'], c: 0},
+                    {q: '"Monday" 是星期几？', a: ['星期一', '星期二', '星期三', '星期四'], c: 0},
+                    {q: '"Saturday" 是星期几？', a: ['星期六', '星期五', '星期日', '星期一'], c: 0},
+                    {q: 'What do you eat in the morning? 早餐通常吃什么？', a: ['Breakfast', 'Lunch', 'Dinner', 'Snack'], c: 0},
+                    {q: '"I like apples." 的意思是？', a: ['我喜欢苹果', '我有苹果', '我吃苹果', '苹果很甜'], c: 0},
+                    {q: '"big" 的反义词是？', a: ['small', 'tall', 'long', 'fast'], c: 0},
+                    {q: '"fast" 的反义词是？', a: ['slow', 'small', 'short', 'cold'], c: 0},
+                    {q: '"hot" 的反义词是？', a: ['cold', 'warm', 'cool', 'dry'], c: 0},
+                    {q: '选出正确的问候语：早上见面说什么？', a: ['Good morning!', 'Good night!', 'See you!', 'Goodbye!'], c: 0},
+                    {q: '"How old are you?" 这句话在问什么？', a: ['你几岁？', '你好吗？', '你叫什么？', '你在哪里？'], c: 0},
+                    {q: '"What is your name?" 正确回答格式是？', a: ['My name is ...', 'I am fine.', 'I like ...', 'Yes, I am.'], c: 0},
+                    {q: '"body"指的是身体哪个部分？', a: ['整个身体', '头部', '手', '脚'], c: 0},
+                    {q: '🐘 "象" in English?', a: ['Elephant', 'Tiger', 'Lion', 'Giraffe'], c: 0},
                 ],
+                // ★ 难度3：句子结构 + 语法判断 + 简单阅读（一年级下英语提升）
                 3: [
-                    {q: '👋 What is this? Hand', a: ['Hand', 'Foot', 'Head', 'Eye'], c: 0},
-                    {q: '🐦 "鸟" in English?', a: ['Bird', 'Fish', 'Dog', 'Cat'], c: 0},
-                    {q: '☀️ Good morning! How are you?', a: ['I\'m fine', 'Good night', 'Thank you', 'Sorry'], c: 0},
-                    {q: '👦 "我" in English?', a: ['I', 'You', 'He', 'She'], c: 0},
-                    {q: '🏃 What can you do?', a: ['Run', 'Sleep', 'Eat', 'Drink'], c: 0},
-                    {q: '🧠 "头" in English?', a: ['Head', 'Hand', 'Foot', 'Eye'], c: 0},
-                    {q: '❓ "你的名字是什么？"', a: ['My name is...', 'How are you?', 'Nice to meet you', 'Goodbye'], c: 0},
-                    {q: '🐇 "兔子" in English?', a: ['Rabbit', 'Monkey', 'Bear', 'Tiger'], c: 0},
-                    {q: '🍞 What is this? Bread', a: ['Bread', 'Rice', 'Milk', 'Water'], c: 0},
-                    {q: '❓ "你好" in English?', a: ['Hello', 'Goodbye', 'Sorry', 'Please'], c: 0},
+                    {q: '选出语法正确的句子：', a: ['I have a dog.', 'I has a dog.', 'Me have dog.', 'I having a dog.'], c: 0},
+                    {q: '选出语法正确的句子：', a: ['She likes cats.', 'She like cats.', 'She liking cats.', 'Her likes cats.'], c: 0},
+                    {q: '"They are students." 改成单数是？', a: ['He is a student.', 'He are student.', 'They is a student.', 'He is students.'], c: 0},
+                    {q: '"I can swim." "can" 在这里表示什么？', a: ['能力（会做某事）', '命令', '疑问', '否定'], c: 0},
+                    {q: '"Can you fly?" 正确的回答是？', a: ['No, I cannot.', 'No, I am not.', 'Yes, I am.', 'No, I do.'], c: 0},
+                    {q: '"This is my ___." 空格填什么表示"书包"？', a: ['bag', 'pen', 'book', 'desk'], c: 0},
+                    {q: '"I ___ to school every day." 空格填什么？', a: ['go', 'goes', 'going', 'went'], c: 0},
+                    {q: '"She ___ an apple." 空格填什么？（她有一个苹果）', a: ['has', 'have', 'had', 'is'], c: 0},
+                    {q: '选出正确的复数形式：', a: ['two cats', 'two cat', 'two cates', 'two cats\''], c: 0},
+                    {q: '"Where is the book?" 这句话在问什么？', a: ['书在哪里？', '书是什么？', '书怎么样？', '谁的书？'], c: 0},
+                    {q: '"The book is on the desk." 书在哪里？', a: ['在桌子上', '在椅子下', '在书包里', '在地上'], c: 0},
+                    {q: '"in, on, under" 这三个词是什么词？', a: ['介词（方位词）', '名词', '动词', '形容词'], c: 0},
+                    {q: '"I am seven years old." 我几岁？', a: ['7岁', '8岁', '6岁', '17岁'], c: 0},
+                    {q: '"My favorite color is blue." 我最喜欢什么颜色？', a: ['蓝色', '红色', '绿色', '黄色'], c: 0},
+                    {q: 'Read: "Tom has a red ball." What does Tom have?', a: ['A red ball', 'A blue ball', 'A big cat', 'A book'], c: 0},
+                    {q: 'Read: "It is sunny today." 今天天气怎样？', a: ['晴天', '下雨', '下雪', '刮风'], c: 0},
+                    {q: '"I like swimming." 这里 "swimming" 是什么形式？', a: ['动词ing形式', '名词', '形容词', '副词'], c: 0},
+                    {q: '"Don\'t run in the classroom!" 这句话是什么意思？', a: ['不要在教室里跑！', '在教室里跑！', '可以跑！', '请快点！'], c: 0},
+                    {q: '"What day is today?" 回答 "It\'s Monday." 今天是？', a: ['星期一', '星期二', '星期五', '星期日'], c: 0},
+                    {q: '"I wake up at 7 o\'clock." 我几点起床？', a: ['7点', '6点', '8点', '9点'], c: 0},
                 ]
             }
         };
@@ -1134,7 +1310,7 @@
             if (saved) saveData = { ...saveData, ...JSON.parse(saved) };
             const today = new Date().toDateString();
             if (!saveData.todayData[today]) {
-                saveData.todayData = { [today]: { questions: 0, correct: 0, playTime: 0 } };
+                saveData.todayData[today] = { questions: 0, correct: 0, playTime: 0 };
             }
         }
 
@@ -1372,6 +1548,7 @@
             gameState.consecutiveWrong = 0;
             gameState.questionsAnswered = [];
             gameState.isPlaying = true;
+            usedQuestionIndices = [];
             
             updateSubjectUI();
             showScreen('gameScreen');
@@ -1428,17 +1605,39 @@
             `;
         }
 
+        // 已用过的题目索引，防止同一轮连续出重复题
+        let usedQuestionIndices = [];
+
         function loadQuestion() {
-            const questions = questionBanks[gameState.subject][gameState.difficulty];
-            const q = questions[Math.floor(Math.random() * questions.length)];
-            
+            let q;
+
+            if (gameState.subject === 'math') {
+                // 数学：动态生成，每题都不同
+                q = generateMathQuestion(gameState.difficulty);
+            } else {
+                // 语文/英语：从静态题库中随机抽取，避免短期重复
+                const pool = questionBanks[gameState.subject][gameState.difficulty];
+                let idx;
+                // 如果已用完所有题则重置
+                if (usedQuestionIndices.length >= pool.length) usedQuestionIndices = [];
+                do {
+                    idx = Math.floor(Math.random() * pool.length);
+                } while (usedQuestionIndices.includes(idx) && usedQuestionIndices.length < pool.length);
+                usedQuestionIndices.push(idx);
+
+                const raw = pool[idx];
+                // 对静态题目的选项做洗牌，修复答案始终在第一位的BUG
+                const shuffled = shuffleAnswers(raw.a, raw.c);
+                q = { q: raw.q, a: shuffled.a, c: shuffled.c };
+            }
+
             document.getElementById('questionText').textContent = q.q;
-            document.getElementById('progressFill').style.width = `${(gameState.currentQuestion / gameState.totalQuestions) * 100}%`;
-            document.getElementById('progressText').textContent = `${gameState.currentQuestion} / ${gameState.totalQuestions}`;
-            
+            document.getElementById('progressFill').style.width = `${((gameState.currentQuestion + 1) / gameState.totalQuestions) * 100}%`;
+            document.getElementById('progressText').textContent = `${gameState.currentQuestion + 1} / ${gameState.totalQuestions}`;
+
             const answersArea = document.getElementById('answersArea');
             answersArea.innerHTML = '';
-            
+
             q.a.forEach((answer, index) => {
                 const btn = document.createElement('button');
                 btn.className = 'answer-btn';
@@ -1534,6 +1733,11 @@
             document.getElementById('comboText').textContent = gameState.combo >= 2 ? `🔥 连击 x${gameState.combo}` : '';
         }
 
+        // 结果页金币显示（独立于 updateStats，避免二次累加）
+        function updateResultCoins() {
+            document.getElementById('coins').textContent = saveData.coins;
+        }
+
         function endGame() {
             gameState.isPlaying = false;
             if (playTimer) clearInterval(playTimer);
@@ -1541,6 +1745,7 @@
             const accuracy = gameState.correctCount / gameState.totalQuestions;
             
             saveData.coins += gameState.coins;
+            gameState.coins = 0; // 避免结果页重复累加
             saveData.totalQuestions += gameState.totalQuestions;
             saveData.correctQuestions += gameState.correctCount;
             
@@ -1577,6 +1782,7 @@
             document.getElementById('earnedRewards').innerHTML = rewardHTML;
             
             showScreen('resultScreen');
+            updateResultCoins();
             document.getElementById('petFollower').style.display = 'none';
             document.removeEventListener('mousemove', movePet);
             document.removeEventListener('touchmove', movePetTouch);
